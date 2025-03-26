@@ -19,6 +19,7 @@ router.post('/', async (req, res) => {
             lng,
             timestamp
         });
+        console.log("Data recieved : ", gpsData);
         await gpsData.save();
         res.status(201).send('GPS Data saved');
     } catch (error) {
