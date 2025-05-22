@@ -4,22 +4,22 @@ import { connectMongoDB } from './utils/connect_mongodb';
 
 import cors from 'cors';
 
-const { createHandler } = require('graphql-http/lib/use/express');
-import { schema, rootResolver } from './graphql/grapql_schema';
-
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+import { typeDefs, resolvers } from './graphql/grapql_schema';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+
+const server = new ApolloServer({
+    typeDefs,
+    resolvers,
+});
 
 // Middleware
 app.use(express.json());
 app.use(cors());
 
-app.use('/graphql', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.log('GraphQL request received');
-    next();
-}, createHandler({ schema, rootValue: rootResolver }));// Set up routes
-setRoutes(app);
 
 // Connect to MongoDB
 connectMongoDB();
@@ -27,3 +27,12 @@ connectMongoDB();
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+async function startApolloServer() {
+    const { url } = await startStandaloneServer(server, {
+        listen: { port: 4000 },
+    });
+    console.log(`🚀 Apollo Server ready at ${url}`);
+}
+
+startApolloServer();
