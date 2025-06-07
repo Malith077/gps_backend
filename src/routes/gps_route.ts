@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { GPSDataModel } from '../schema/GPSDataSchema';
+import { GPS_DATA_ADDED, pubsub } from '../graphql/grapql_schema'
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.post('/', async (req, res) => {
         });
         console.log("Data recieved : ", gpsData);
         await gpsData.save();
+        pubsub.publish(GPS_DATA_ADDED, { gpsDataAdded: gpsData });
         res.status(201).send('GPS Data saved');
     } catch (error) {
         res.status(500).send('Error saving GPS Data');

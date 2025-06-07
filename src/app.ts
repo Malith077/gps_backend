@@ -1,38 +1,59 @@
+import http from 'http';
 import express from 'express';
-import { setRoutes } from './routes/index';
-import { connectMongoDB } from './utils/connect_mongodb';
-
 import cors from 'cors';
 
 import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
+import { expressMiddleware } from '@apollo/server/express4';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
+
+import { makeExecutableSchema } from '@graphql-tools/schema';
+
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/use/ws';    // ← updated import
+
 import { typeDefs, resolvers } from './graphql/grapql_schema';
+import { setRoutes } from './routes';
+import { connectMongoDB } from './utils/connect_mongodb';
 
-const app = express();
-const PORT = process.env.PORT || 3002;
+async function start() {
+  const app = express();
+  app.use(cors(), express.json());
+  setRoutes(app);
+  await connectMongoDB();
 
-const server = new ApolloServer({
-    typeDefs,
-    resolvers,
-});
+  const server = http.createServer(app);
 
-// Middleware
-app.use(express.json());
-app.use(cors());
+  const schema = makeExecutableSchema({ typeDefs, resolvers });
 
+  // wire up graphql-ws on the same /graphql path
+  const wsServer = new WebSocketServer({ server, path: '/graphql' });
+  const cleanup = useServer({ schema }, wsServer);
 
-// Connect to MongoDB
-connectMongoDB();
+  const apollo = new ApolloServer({
+    schema,
+    plugins: [
+      ApolloServerPluginDrainHttpServer({ httpServer: server }),
+      {
+        async serverWillStart() {
+          return {
+            async drainServer() {
+              await cleanup.dispose();
+            }
+          };
+        }
+      }
+    ]
+  });
+  await apollo.start();
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+  app.use(
+    '/graphql',
+    express.json(),
+    expressMiddleware(apollo, { context: async () => ({}) })
+  );
 
-async function startApolloServer() {
-    const { url } = await startStandaloneServer(server, {
-        listen: { port: 4000 },
-    });
-    console.log(`🚀 Apollo Server ready at ${url}`);
+  const PORT = Number(process.env.PORT ?? 3002);
+  server.listen(PORT, () => console.log(`🚀 http://localhost:${PORT}/graphql`));
 }
 
-startApolloServer();
+start().catch(console.error);
